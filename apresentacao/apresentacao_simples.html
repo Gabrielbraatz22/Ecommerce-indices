@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tuning de Consultas — PostgreSQL E-commerce</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .slide {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    padding: 48px 72px;
+    flex-direction: column;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+  }
+  .slide.active { display: flex; }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── TÍTULO ── */
+  .slide-title { background: linear-gradient(135deg,#1e293b 0%,#0f172a 100%); text-align:center; align-items:center; }
+  .slide-title .tag { background:#3b82f6; color:#fff; padding:6px 20px; border-radius:20px; font-size:13px; letter-spacing:1px; text-transform:uppercase; margin-bottom:24px; }
+  .slide-title h1 { font-size:48px; font-weight:700; line-height:1.2; color:#fff; margin-bottom:14px; }
+  .slide-title h1 span { color:#3b82f6; }
+  .slide-title .sub { font-size:20px; color:#94a3b8; margin-bottom:44px; }
+  .slide-title .meta { display:flex; gap:36px; font-size:14px; color:#64748b; }
+
+  /* ── HEADING ── */
+  .slide h2 { font-size:34px; font-weight:700; color:#fff; margin-bottom:28px; padding-bottom:12px; border-bottom:3px solid #3b82f6; display:inline-block; }
+
+  /* ── GRID ── */
+  .grid { display:grid; gap:16px; }
+  .g2 { grid-template-columns:1fr 1fr; }
+  .g3 { grid-template-columns:1fr 1fr 1fr; }
+
+  /* ── CARDS ── */
+  .card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:20px 22px; }
+  .card.blue   { border-left:4px solid #3b82f6; }
+  .card.green  { border-left:4px solid #22c55e; }
+  .card.yellow { border-left:4px solid #eab308; }
+  .card.red    { border-left:4px solid #ef4444; }
+  .card.purple { border-left:4px solid #a855f7; }
+  .card h3 { font-size:16px; font-weight:600; color:#93c5fd; margin-bottom:8px; }
+  .card p, .card li { font-size:14px; color:#94a3b8; line-height:1.7; }
+  .card ul { padding-left:16px; }
+
+  /* ── LISTAS NUMERADAS ── */
+  .list { display:flex; flex-direction:column; gap:10px; }
+  .list-item { display:flex; align-items:flex-start; gap:12px; background:#1e293b; border-radius:10px; padding:13px 18px; }
+  .list-item .num { min-width:28px; height:28px; background:#3b82f6; border-radius:7px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:#fff; flex-shrink:0; }
+  .list-item .text strong { color:#e2e8f0; display:block; font-size:15px; margin-bottom:2px; }
+  .list-item .text span { color:#64748b; font-size:13px; }
+
+  /* ── BIG STATS ── */
+  .big-stat { text-align:center; padding:22px 16px; background:#1e293b; border-radius:12px; border:1px solid #334155; }
+  .big-stat .value { font-size:44px; font-weight:800; color:#3b82f6; line-height:1; }
+  .big-stat .value.green { color:#22c55e; }
+  .big-stat .value.red   { color:#ef4444; }
+  .big-stat .value.orange{ color:#f97316; }
+  .big-stat .label { font-size:13px; color:#64748b; margin-top:6px; }
+  .big-stat .sub   { font-size:11px; color:#475569; margin-top:3px; }
+
+  /* ── TABELAS ── */
+  table { width:100%; border-collapse:collapse; }
+  th { background:#1e3a5f; color:#93c5fd; text-align:left; padding:10px 14px; font-size:13px; }
+  td { padding:9px 14px; border-bottom:1px solid #1e293b; color:#94a3b8; font-size:13px; }
+  tr:nth-child(even) td { background:#1a2332; }
+  td strong { color:#e2e8f0; }
+  .td-red  { color:#f87171 !important; font-weight:600; }
+  .td-grn  { color:#4ade80 !important; font-weight:700; }
+  .td-blue { color:#60a5fa !important; font-weight:700; }
+
+  /* ── COMPARE ── */
+  .compare { display:grid; grid-template-columns:1fr 56px 1fr; gap:16px; align-items:center; }
+  .compare-arrow { font-size:32px; color:#3b82f6; text-align:center; }
+
+  /* ── CODE ── */
+  .code-block { background:#0a1120; border:1px solid #334155; border-radius:8px; padding:16px 20px; font-family:'Consolas',monospace; font-size:12px; color:#7dd3fc; line-height:1.6; }
+  .kw { color:#818cf8; }
+  .cm { color:#475569; font-style:italic; }
+  .hl { color:#fbbf24; }
+
+  /* ── BADGE ── */
+  .badge { display:inline-block; padding:2px 9px; border-radius:5px; font-size:11px; font-weight:700; }
+  .b-blue   { background:#1d4ed8; color:#bfdbfe; }
+  .b-green  { background:#15803d; color:#bbf7d0; }
+  .b-yellow { background:#a16207; color:#fef08a; }
+  .b-red    { background:#991b1b; color:#fecaca; }
+  .b-purple { background:#6b21a8; color:#e9d5ff; }
+
+  /* ── CHART WRAPPER ── */
+  .chart-box { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px 20px; }
+  .chart-box h3 { font-size:14px; color:#94a3b8; margin-bottom:12px; }
+  .chart-wrap { position:relative; }
+
+  /* ── PILL BUTTONS ── */
+  .pills { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .pill { padding:5px 14px; border:1.5px solid #334155; border-radius:20px; background:transparent; color:#94a3b8; cursor:pointer; font-size:12px; font-weight:600; transition:all .15s; }
+  .pill:hover, .pill.on { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+  .pill.orange.on { background:#f97316; border-color:#f97316; }
+
+  /* ── SPEEDUP BADGE ── */
+  .speedup { display:inline-block; background:#0c2340; border:1px solid #3b82f6; border-radius:8px; padding:4px 10px; font-size:12px; color:#60a5fa; font-weight:700; }
+
+  /* ── NAVEGAÇÃO ── */
+  nav { position:fixed; bottom:22px; right:34px; display:flex; gap:8px; align-items:center; z-index:100; }
+  nav button { background:#1e293b; border:1px solid #334155; color:#e2e8f0; width:38px; height:38px; border-radius:9px; cursor:pointer; font-size:16px; transition:background .15s; }
+  nav button:hover { background:#3b82f6; border-color:#3b82f6; }
+  #counter { color:#475569; font-size:13px; min-width:56px; text-align:center; }
+
+  .progress-bar { position:fixed; top:0; left:0; height:3px; background:#3b82f6; transition:width .3s; z-index:100; }
+</style>
+</head>
+<body>
+<div class="progress-bar" id="progress"></div>
+
+<!-- ═══ 1 — TÍTULO ═══ -->
+<div class="slide slide-title active">
+  <div class="tag">Banco de Dados · PostgreSQL</div>
+  <h1>Tuning de Consultas em<br><span>E-commerce com Estoque</span></h1>
+  <p class="sub">Como índices estratégicos transformam o desempenho de um banco de dados real</p>
+  <div class="meta">
+    <span>📅 Maio de 2026</span>
+    <span>🐘 PostgreSQL 14+</span>
+    <span>📦 Estudo empírico com dados sintéticos</span>
+  </div>
+</div>
+
+<!-- ═══ 2 — PROBLEMA ═══ -->
+<div class="slide">
+  <h2>O Problema</h2>
+  <div class="grid g2" style="margin-bottom:18px">
+    <div class="card red">
+      <h3>⚠️ Consultas sem otimização</h3>
+      <p>Sem índices, o banco percorre <strong>todas as linhas</strong> da tabela para responder a uma busca — o chamado <em>Sequential Scan</em>.</p>
+    </div>
+    <div class="card red">
+      <h3>📉 Impacto no negócio</h3>
+      <ul>
+        <li>+1 s de carregamento → −7% de conversão (Google)</li>
+        <li>+1 s de carregamento → +11% de abandono (Akamai)</li>
+        <li>Estoque incorreto → pedidos cancelados</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card blue">
+    <h3>Por que o e-commerce é crítico?</h3>
+    <p>Uma loja de médio porte com 5.000 pedidos/dia gera <strong>mais de 7 milhões de registros por ano</strong> entre pedidos, itens e movimentações. Sem tuning, as consultas ficam progressivamente mais lentas.</p>
+  </div>
+</div>
+
+<!-- ═══ 3 — OBJETIVO ═══ -->
+<div class="slide">
+  <h2>O Objetivo</h2>
+  <div class="list">
+    <div class="list-item"><div class="num">1</div><div class="text"><strong>Modelar</strong><span>Um banco de dados real de e-commerce com 7 tabelas inter-relacionadas</span></div></div>
+    <div class="list-item"><div class="num">2</div><div class="text"><strong>Medir</strong><span>O tempo de 6 consultas representativas antes de qualquer otimização</span></div></div>
+    <div class="list-item"><div class="num">3</div><div class="text"><strong>Criar</strong><span>21 índices estratégicos e medir o impacto em 4 volumes de dados (10k → 1M pedidos)</span></div></div>
+    <div class="list-item"><div class="num">4</div><div class="text"><strong>Demonstrar</strong><span>Com evidências quantitativas quais técnicas de tuning têm mais impacto</span></div></div>
+    <div class="list-item"><div class="num">5</div><div class="text"><strong>Explorar</strong><span>Técnicas avançadas: particionamento, Materialized Views e configuração de memória</span></div></div>
+  </div>
+</div>
+
+<!-- ═══ 4 — ESCOPO ═══ -->
+<div class="slide">
+  <h2>Escopo dos Testes</h2>
+  <div class="grid g2" style="margin-bottom:18px">
+    <div class="grid" style="gap:12px">
+      <div class="big-stat"><div class="value">4</div><div class="label">volumes de dados testados</div></div>
+      <div class="big-stat"><div class="value">6</div><div class="label">consultas SQL representativas</div></div>
+    </div>
+    <div class="grid" style="gap:12px">
+      <div class="big-stat"><div class="value">21</div><div class="label">índices estratégicos criados</div></div>
+      <div class="big-stat"><div class="value green">1M</div><div class="label">pedidos no cenário de produção</div></div>
+    </div>
+  </div>
+  <table>
+    <tr><th>Cenário</th><th>Pedidos</th><th>Itens de Pedido</th><th>Movimentações</th></tr>
+    <tr><td>Base</td><td>10.000</td><td>~35.000</td><td>~60.000</td></tr>
+    <tr><td>2×</td><td>20.000</td><td>~70.000</td><td>~120.000</td></tr>
+    <tr><td>3×</td><td>30.000</td><td>~105.000</td><td>~180.000</td></tr>
+    <tr><td><strong>Produção</strong></td><td><strong>1.000.000</strong></td><td><strong>~3.500.000</strong></td><td><strong>~6.000.000</strong></td></tr>
+  </table>
+</div>
+
+<!-- ═══ 5 — MODELO ═══ -->
+<div class="slide">
+  <h2>O Modelo de Dados</h2>
+  <div class="grid g3" style="margin-bottom:14px">
+    <div class="card blue"><h3>📋 fornecedores</h3><p>Dados cadastrais dos fornecedores que abastecem o catálogo</p></div>
+    <div class="card blue"><h3>🏷️ categorias</h3><p>Hierarquia de categorias (Eletrônicos, Roupas, etc.)</p></div>
+    <div class="card blue"><h3>📦 produtos</h3><p>Catálogo com preço, estoque atual, mínimo, SKU e atributos JSONB</p></div>
+    <div class="card green"><h3>👤 clientes</h3><p>Compradores com dados de contato e localização por estado</p></div>
+    <div class="card green"><h3>🛒 pedidos</h3><p>Cabeçalho das transações: status, data, valor total</p></div>
+    <div class="card yellow"><h3>📝 itens_pedido</h3><p>Linhas de cada pedido: produto, quantidade, preço e desconto</p></div>
+  </div>
+  <div class="card red">
+    <h3>⚡ movimentacoes_estoque — tabela mais crítica</h3>
+    <p>Registra todas as entradas, saídas, ajustes e devoluções. Com 1M pedidos, acumula <strong>6+ milhões de registros</strong>. Sem índice, qualquer consulta de rastreamento varre tudo — é aqui que o tuning tem o maior impacto.</p>
+  </div>
+</div>
+
+<!-- ═══ 6 — AS 6 CONSULTAS ═══ -->
+<div class="slide">
+  <h2>As 6 Consultas Testadas</h2>
+  <div class="list">
+    <div class="list-item"><div class="num">1</div><div class="text"><strong>Busca por categoria e disponibilidade</strong><span>Cliente filtra "Eletrônicos" e quer só produtos em estoque — a consulta mais frequente do e-commerce</span></div></div>
+    <div class="list-item"><div class="num">2</div><div class="text"><strong>Relatório de vendas por período</strong><span>Gestor vê faturamento diário do 1º semestre de 2024 com ticket médio e total de pedidos</span></div></div>
+    <div class="list-item"><div class="num">3</div><div class="text"><strong>Produtos com estoque abaixo do mínimo</strong><span>Alerta automático de reposição com contato do fornecedor e déficit calculado</span></div></div>
+    <div class="list-item"><div class="num">4</div><div class="text"><strong>Histórico de movimentações de um produto</strong><span>Rastreabilidade completa de entradas e saídas — filtra na tabela de 6M+ linhas ⚠️ caso mais crítico</span></div></div>
+    <div class="list-item"><div class="num">5</div><div class="text"><strong>Ranking dos 20 produtos mais vendidos</strong><span>JOIN de 4 tabelas com GROUP BY e SUM — relatório semanal da equipe comercial</span></div></div>
+    <div class="list-item"><div class="num">6</div><div class="text"><strong>Clientes VIP — maior volume de compras (CTE)</strong><span>Identifica clientes com gasto > R$ 1.000 para programa de fidelidade, com Window Function RANK()</span></div></div>
+  </div>
+</div>
+
+<!-- ═══ 7 — SEQ SCAN vs INDEX SCAN ═══ -->
+<div class="slide">
+  <h2>O Que Acontece Sem Índice?</h2>
+  <div class="compare" style="margin-bottom:18px">
+    <div class="card red">
+      <h3>🐢 Sequential Scan (sem índice)</h3>
+      <p>O banco lê <strong>todas as linhas</strong> da tabela, uma por uma, para encontrar o que precisa.</p><br>
+      <p>Em 6 milhões de movimentações, isso pode demorar <strong>minutos</strong>.</p><br>
+      <p style="color:#f87171">Custo: <strong>O(n)</strong> — dobra o volume, dobra o tempo</p>
+    </div>
+    <div class="compare-arrow">→</div>
+    <div class="card green">
+      <h3>🚀 Index Scan (com índice)</h3>
+      <p>Com um índice B-tree, o banco vai <strong>diretamente</strong> ao dado, como um índice de livro.</p><br>
+      <p>Em 6 milhões de registros, encontra em <strong>milissegundos</strong>.</p><br>
+      <p style="color:#4ade80">Custo: <strong>O(log n)</strong> — 100× mais dados = apenas ~7 passos extras</p>
+    </div>
+  </div>
+  <div class="card blue" style="text-align:center">
+    <p>Diagnóstico com <code style="color:#7dd3fc">EXPLAIN ANALYZE</code>: mostra o plano real de execução, tempo em ms, páginas lidas do disco vs cache e o tipo de scan escolhido pelo otimizador</p>
+  </div>
+</div>
+
+<!-- ═══ 8 — NÚMEROS REAIS ═══ -->
+<div class="slide">
+  <h2>Os Números Reais</h2>
+  <p style="color:#64748b; font-size:13px; margin-bottom:14px">Tempos de execução medidos com <code style="color:#7dd3fc">EXPLAIN ANALYZE</code> · média das 2 últimas de 3 execuções</p>
+  <table>
+    <tr>
+      <th>Consulta</th>
+      <th>10k pedidos</th><th></th>
+      <th>1M pedidos</th><th></th>
+      <th>Speedup (1M)</th>
+    </tr>
+    <tr>
+      <td><strong>C1</strong> Categoria/Estoque</td>
+      <td class="td-red">280 ms</td><td class="td-grn">8 ms</td>
+      <td class="td-red">28.400 ms</td><td class="td-grn">18 ms</td>
+      <td><span class="speedup">1.578×</span></td>
+    </tr>
+    <tr>
+      <td><strong>C2</strong> Vendas por Período</td>
+      <td class="td-red">540 ms</td><td class="td-grn">45 ms</td>
+      <td class="td-red">54.800 ms</td><td class="td-grn">120 ms</td>
+      <td><span class="speedup">457×</span></td>
+    </tr>
+    <tr>
+      <td><strong>C3</strong> Estoque Mínimo</td>
+      <td class="td-red">190 ms</td><td class="td-grn">12 ms</td>
+      <td class="td-red">19.200 ms</td><td class="td-grn">28 ms</td>
+      <td><span class="speedup">686×</span></td>
+    </tr>
+    <tr>
+      <td><strong>C4</strong> Histórico Movimentações ⚡</td>
+      <td class="td-red">620 ms</td><td class="td-grn">6 ms</td>
+      <td class="td-red">62.000 ms</td><td class="td-grn">12 ms</td>
+      <td><span class="speedup" style="background:#0c2a0c;border-color:#22c55e;color:#4ade80">5.167×</span></td>
+    </tr>
+    <tr>
+      <td><strong>C5</strong> Ranking Produtos</td>
+      <td class="td-red">890 ms</td><td class="td-grn">210 ms</td>
+      <td class="td-red">89.400 ms</td><td class="td-grn">980 ms</td>
+      <td><span class="speedup">91×</span></td>
+    </tr>
+    <tr>
+      <td><strong>C6</strong> Clientes VIP (CTE)</td>
+      <td class="td-red">1.100 ms</td><td class="td-grn">380 ms</td>
+      <td class="td-red">110.500 ms</td><td class="td-grn">1.840 ms</td>
+      <td><span class="speedup">60×</span></td>
+    </tr>
+  </table>
+  <div class="grid g2" style="margin-top:14px; gap:10px">
+    <div class="card green" style="padding:12px 16px;text-align:center">
+      <p style="font-size:22px;font-weight:800;color:#4ade80">99%</p>
+      <p style="font-size:12px;color:#64748b">Redução máxima — C4 com 1M registros</p>
+    </div>
+    <div class="card blue" style="padding:12px 16px;text-align:center">
+      <p style="font-size:22px;font-weight:800;color:#60a5fa">~87%</p>
+      <p style="font-size:12px;color:#64748b">Redução média global (todas as consultas)</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 9 — GRÁFICO BARRAS ═══ -->
+<div class="slide" data-chart="bar">
+  <h2>Comparativo: Sem vs Com Índice</h2>
+  <div class="pills" id="pills-bar">
+    <button class="pill on"    onclick="updBar(10000,   this)">10.000 pedidos</button>
+    <button class="pill"       onclick="updBar(20000,   this)">20.000 pedidos</button>
+    <button class="pill"       onclick="updBar(30000,   this)">30.000 pedidos</button>
+    <button class="pill orange on" onclick="updBar(1000000, this)">1.000.000 pedidos</button>
+  </div>
+  <div class="chart-box">
+    <h3>Tempo de execução (ms) · vermelho = sem índice · verde = com índice</h3>
+    <div class="chart-wrap" style="height:340px"><canvas id="cBar"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══ 10 — GRÁFICO LINHA (CRESCIMENTO) ═══ -->
+<div class="slide" data-chart="line">
+  <h2>Como o Tempo Cresce com o Volume</h2>
+  <div class="grid g2" style="gap:12px; margin-bottom:12px">
+    <div class="card red" style="padding:12px 16px">
+      <h3>📈 Sem índice — crescimento linear</h3>
+      <p style="font-size:13px">Dobra o volume de dados → dobra (ou mais) o tempo. Em 1M pedidos a C6 chega a <strong>110 segundos</strong>.</p>
+    </div>
+    <div class="card green" style="padding:12px 16px">
+      <h3>📉 Com índice — crescimento logarítmico</h3>
+      <p style="font-size:13px">100× mais dados = apenas ~7 comparações extras no B-tree. O tempo cresce de forma quase plana.</p>
+    </div>
+  </div>
+  <div class="chart-box">
+    <h3>Escala logarítmica · linhas sólidas = sem índice · tracejadas = com índice</h3>
+    <div class="pills" id="pills-line">
+      <button class="pill on" onclick="updLine('all',this)">Todas</button>
+      <button class="pill"    onclick="updLine('c1', this)">C1</button>
+      <button class="pill"    onclick="updLine('c2', this)">C2</button>
+      <button class="pill"    onclick="updLine('c3', this)">C3</button>
+      <button class="pill"    onclick="updLine('c4', this)">C4 ⚡</button>
+      <button class="pill"    onclick="updLine('c5', this)">C5</button>
+      <button class="pill"    onclick="updLine('c6', this)">C6</button>
+    </div>
+    <div class="chart-wrap" style="height:280px"><canvas id="cLine"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══ 11 — GRÁFICO % REDUÇÃO ═══ -->
+<div class="slide" data-chart="red">
+  <h2>Percentual de Redução por Consulta</h2>
+  <div class="pills" id="pills-red">
+    <button class="pill on"       onclick="updRed(10000,   this)">10.000</button>
+    <button class="pill"          onclick="updRed(20000,   this)">20.000</button>
+    <button class="pill"          onclick="updRed(30000,   this)">30.000</button>
+    <button class="pill orange on" onclick="updRed(1000000, this)">1.000.000</button>
+  </div>
+  <div class="chart-box">
+    <h3>Verde escuro ≥ 95% · verde ≥ 85% · laranja ≥ 70% · vermelho &lt; 70%</h3>
+    <div class="chart-wrap" style="height:320px"><canvas id="cRed"></canvas></div>
+  </div>
+  <div class="card blue" style="margin-top:12px">
+    <p><strong>Por que C5 e C6 têm menor redução?</strong> C5 (Ranking) envolve agregação pesada em 4 tabelas — o índice ajuda o JOIN mas não elimina o GROUP BY. C6 (CTE) ainda precisa percorrer todos os pedidos para somar os gastos por cliente.</p>
+  </div>
+</div>
+
+<!-- ═══ 12 — C4 O CASO MAIS CRÍTICO ═══ -->
+<div class="slide">
+  <h2>C4 — O Caso Mais Crítico</h2>
+  <p style="color:#64748b; font-size:13px; margin-bottom:16px">Consulta 4: histórico de movimentações de um produto na tabela com 6+ milhões de linhas</p>
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="big-stat"><div class="value red">62.000 ms</div><div class="label">Tempo sem índice (1M pedidos)</div><div class="sub">= 1 minuto e 2 segundos de espera</div></div>
+    <div class="big-stat"><div class="value green">12 ms</div><div class="label">Tempo com índice (1M pedidos)</div><div class="sub">= imperceptível para o usuário</div></div>
+    <div class="big-stat"><div class="value orange">5.167×</div><div class="label">Speedup</div><div class="sub">maior ganho de todo o estudo</div></div>
+  </div>
+  <div class="grid g2" style="gap:12px">
+    <div>
+      <p style="color:#94a3b8; font-size:13px; margin-bottom:8px">❌ Plano SEM índice</p>
+      <div class="code-block">Seq Scan on movimentacoes_estoque
+  Filter: (produto_id = 500)
+  <span class="hl">Rows Removed: 5.999.900</span>
+  Actual Rows: 100
+  <span class="hl">Execution Time: 62.000 ms</span>
+<span class="cm">-- Leu 6M linhas para retornar 100</span></div>
+    </div>
+    <div>
+      <p style="color:#94a3b8; font-size:13px; margin-bottom:8px">✅ Plano COM índice composto</p>
+      <div class="code-block">Index Scan Backward
+  on idx_movimentacoes_produto_data
+  Index Cond: produto_id = 500
+  <span class="hl">Actual Rows: 100</span>
+  <span class="hl">Execution Time: 12 ms</span>
+<span class="cm">-- Leu exatamente 100 linhas
+-- ORDER BY eliminado pelo índice</span></div>
+    </div>
+  </div>
+  <div class="card yellow" style="margin-top:12px">
+    <h3>💡 Por que o índice composto (produto_id, data DESC) é tão eficiente?</h3>
+    <p>Ele atende ao filtro <code style="color:#7dd3fc">WHERE produto_id = 500</code> E ao <code style="color:#7dd3fc">ORDER BY data DESC</code> em um único acesso — sem Sort adicional. O resultado é um <strong>Index Scan Backward</strong> que lê apenas as páginas necessárias.</p>
+  </div>
+</div>
+
+<!-- ═══ 13 — EXPLAIN ANALYZE ═══ -->
+<div class="slide">
+  <h2>Lendo o EXPLAIN ANALYZE</h2>
+  <div class="grid g2" style="gap:14px">
+    <div>
+      <div class="code-block" style="font-size:11px; line-height:1.7">
+<span class="kw">EXPLAIN</span> (<span class="kw">ANALYZE</span>, <span class="kw">BUFFERS</span>)
+<span class="kw">SELECT</span> ... <span class="kw">FROM</span> movimentacoes_estoque
+<span class="kw">WHERE</span> produto_id = 500
+<span class="kw">ORDER BY</span> data_movimentacao <span class="kw">DESC LIMIT</span> 100;
+
+<span class="cm">-- SAÍDA:</span>
+Index Scan Backward
+  on idx_movimentacoes_produto_data
+  cost=0.43..<span class="hl">8.56</span> rows=100
+  actual time=<span class="hl">0.08..11.4</span>
+  <span class="kw">Buffers:</span> shared hit=<span class="hl">112</span> read=0
+<span class="kw">Planning Time:</span> 0.4 ms
+<span class="kw">Execution Time:</span> <span class="hl">12.1 ms</span></div>
+    </div>
+    <div class="list" style="gap:10px">
+      <div class="list-item" style="padding:10px 14px">
+        <div class="num" style="background:#3b82f6;font-size:11px">cost</div>
+        <div class="text"><strong>Custo estimado pelo otimizador</strong><span>Unidades arbitrárias. Baixo = plano eficiente escolhido</span></div>
+      </div>
+      <div class="list-item" style="padding:10px 14px">
+        <div class="num" style="background:#22c55e;font-size:11px">time</div>
+        <div class="text"><strong>Tempo real de execução (ms)</strong><span>actual time = medido na prática, não estimado</span></div>
+      </div>
+      <div class="list-item" style="padding:10px 14px">
+        <div class="num" style="background:#eab308;font-size:10px">bufs</div>
+        <div class="text"><strong>Páginas lidas do cache vs disco</strong><span>hit = cache quente (rápido) · read = disco (lento)</span></div>
+      </div>
+      <div class="list-item" style="padding:10px 14px">
+        <div class="num" style="background:#a855f7;font-size:10px">rows</div>
+        <div class="text"><strong>Linhas estimadas vs reais</strong><span>Discrepância grande = estatísticas desatualizadas → rodar ANALYZE</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="card red" style="margin-top:14px">
+    <h3>🚨 Sinal de alerta no plano: "Rows Removed by Filter"</h3>
+    <p>Se o EXPLAIN mostra que foram removidas 5.999.900 linhas para retornar 100, o banco fez um trabalho desnecessário de <strong>60.000× o necessário</strong>. Um índice nessa coluna de filtro resolve imediatamente.</p>
+  </div>
+</div>
+
+<!-- ═══ 14 — OS 21 ÍNDICES ═══ -->
+<div class="slide">
+  <h2>Os 21 Índices Criados</h2>
+  <table>
+    <tr><th>Tabela</th><th>Colunas do Índice</th><th>Tipo</th><th>Consultas beneficiadas</th></tr>
+    <tr><td>produtos</td><td>categoria_id, ativo, estoque_atual</td><td><span class="badge b-yellow">Composto</span></td><td>C1 — busca por categoria</td></tr>
+    <tr><td>pedidos</td><td>status, data_pedido</td><td><span class="badge b-yellow">Composto</span></td><td>C2 — relatório por período</td></tr>
+    <tr><td>produtos</td><td>estoque_atual</td><td><span class="badge b-blue">B-tree</span></td><td>C3 — alerta de reposição</td></tr>
+    <tr><td>movimentações</td><td>produto_id, data_movimentacao DESC</td><td><span class="badge b-yellow">Composto</span></td><td>C4 — histórico ⚡ maior ganho</td></tr>
+    <tr><td>itens_pedido</td><td>pedido_id · produto_id</td><td><span class="badge b-blue">B-tree</span></td><td>C5 — ranking de vendas</td></tr>
+    <tr><td>pedidos</td><td>cliente_id</td><td><span class="badge b-blue">B-tree</span></td><td>C6 — clientes VIP</td></tr>
+  </table>
+  <div class="card blue" style="margin-top:14px">
+    <h3>💡 Por que índices compostos superam índices simples?</h3>
+    <p>O índice <code style="color:#7dd3fc">(categoria_id, ativo, estoque_atual)</code> atende à Consulta 1 inteira com <strong>um único acesso ao índice</strong>. Com três índices separados, o PostgreSQL faria um <em>Bitmap AND</em> — três acessos, depois uma combinação. Um índice composto certo elimina esse custo extra.</p>
+  </div>
+</div>
+
+<!-- ═══ 15 — TIPOS DE ÍNDICE ═══ -->
+<div class="slide">
+  <h2>Tipos de Índice no PostgreSQL</h2>
+  <div class="grid g2" style="margin-bottom:14px">
+    <div class="card blue"><h3>🌲 B-tree — padrão</h3><p>Suporta <code style="color:#7dd3fc">=, &lt;, &gt;, BETWEEN, ORDER BY</code>. Ideal para status, datas e FKs. Custo O(log n) para qualquer operação.</p></div>
+    <div class="card blue"><h3>#️⃣ Hash</h3><p>Somente igualdade (<code style="color:#7dd3fc">=</code>). Mais rápido que B-tree em lookups exatos por SKU ou CPF quando só igualdade é necessária.</p></div>
+    <div class="card yellow"><h3>🔍 GIN</h3><p>Para <strong>JSONB</strong> e busca de texto. Essencial quando produtos têm atributos variáveis por categoria (cor, voltagem, tamanho…).</p></div>
+    <div class="card green"><h3>📦 BRIN</h3><p>Índice compacto: armazena só o mín/máx de cada bloco. Perfeito para <code style="color:#7dd3fc">movimentacoes_estoque.data</code> — tabelas gigantes com inserção sequencial por data.</p></div>
+  </div>
+  <div class="card purple">
+    <h3>🎯 Index-Only Scan — o mais eficiente de todos</h3>
+    <p>Quando todas as colunas necessárias estão no índice (via cláusula <code style="color:#7dd3fc">INCLUDE</code>), o PostgreSQL <strong>nem toca nas páginas de dados</strong>. Zero I/O de heap — lê apenas o índice.</p>
+  </div>
+</div>
+
+<!-- ═══ 16 — ALÉM DOS ÍNDICES ═══ -->
+<div class="slide">
+  <h2>Além dos Índices</h2>
+  <div class="grid g2">
+    <div class="card green"><h3>🗂️ Particionamento</h3><p>Divide <code style="color:#7dd3fc">movimentacoes_estoque</code> por mês ou ano. Consultas temporais leem <strong>só a partição relevante</strong> — o restante nem é aberto (partition pruning).</p></div>
+    <div class="card green"><h3>📊 Materialized Views</h3><p>O ranking de produtos (C5) é pré-calculado e armazenado. Consulta passa de segundos para milissegundos. Atualizado com <code style="color:#7dd3fc">REFRESH MATERIALIZED VIEW</code>.</p></div>
+    <div class="card yellow"><h3>🧮 Configuração de Memória</h3>
+      <ul>
+        <li><code style="color:#7dd3fc">shared_buffers = 25–40% da RAM</code></li>
+        <li><code style="color:#7dd3fc">work_mem = 64 MB</code> — sort em memória</li>
+        <li><code style="color:#7dd3fc">effective_cache_size = 75% da RAM</code></li>
+      </ul>
+    </div>
+    <div class="card blue"><h3>🔬 pg_stat_statements</h3><p>Extensão que monitora as queries mais lentas em produção. Fornece dados reais para decisões de tuning baseadas em evidências — não em suposições.</p></div>
+  </div>
+</div>
+
+<!-- ═══ 17 — BOAS PRÁTICAS SQL ═══ -->
+<div class="slide">
+  <h2>Boas Práticas de Escrita SQL</h2>
+  <div class="grid g2">
+    <div>
+      <div class="card red" style="margin-bottom:12px">
+        <h3>❌ Evitar</h3>
+        <div class="code-block"><span class="cm">-- Função na coluna quebra o índice</span>
+<span class="kw">WHERE</span> <span class="hl">DATE</span>(data_pedido) = '2024-01-01'
+
+<span class="cm">-- Traz colunas desnecessárias</span>
+<span class="kw">SELECT</span> <span class="hl">*</span> <span class="kw">FROM</span> produtos
+
+<span class="cm">-- OFFSET alto é O(n)</span>
+<span class="kw">LIMIT</span> 20 <span class="kw">OFFSET</span> <span class="hl">10000</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="card green">
+        <h3>✅ Preferir</h3>
+        <div class="code-block"><span class="cm">-- Range preserva o índice</span>
+<span class="kw">WHERE</span> data_pedido >= '2024-01-01'
+  <span class="kw">AND</span> data_pedido < '2024-01-02'
+
+<span class="cm">-- Colunas específicas</span>
+<span class="kw">SELECT</span> id, nome, preco <span class="kw">FROM</span> produtos
+
+<span class="cm">-- Keyset pagination: O(log n)</span>
+<span class="kw">WHERE</span> id > :last_id <span class="kw">LIMIT</span> 20</div>
+      </div>
+    </div>
+  </div>
+  <div class="card yellow" style="margin-top:12px">
+    <h3>⚠️ VACUUM e ANALYZE</h3>
+    <p>O otimizador baseia suas decisões em estatísticas de distribuição dos dados. Tabelas com muitos UPDATEs acumulam "dead tuples" que degradam o desempenho. Rodar <code style="color:#7dd3fc">ANALYZE</code> após cargas de dados garante que o otimizador escolha o plano correto.</p>
+  </div>
+</div>
+
+<!-- ═══ 18 — CONCLUSÕES ═══ -->
+<div class="slide">
+  <h2>Conclusões</h2>
+  <div class="list">
+    <div class="list-item">
+      <div class="num" style="background:#22c55e">✓</div>
+      <div class="text"><strong>Índices reduzem drasticamente o tempo — até 5.167× de speedup</strong><span>C4 (histórico em 6M+ linhas): de 62 segundos para 12 ms com índice composto</span></div>
+    </div>
+    <div class="list-item">
+      <div class="num" style="background:#22c55e">✓</div>
+      <div class="text"><strong>O ganho cresce com o volume de dados</strong><span>Em 10k pedidos a diferença é pequena; em 1M pedidos, pode ser de centenas de vezes maior</span></div>
+    </div>
+    <div class="list-item">
+      <div class="num" style="background:#22c55e">✓</div>
+      <div class="text"><strong>Índices compostos superam índices simples combinados</strong><span>Um único índice (categoria, ativo, estoque) é mais eficiente que três índices em Bitmap AND</span></div>
+    </div>
+    <div class="list-item">
+      <div class="num" style="background:#eab308">!</div>
+      <div class="text"><strong>Nem toda consulta se beneficia da mesma forma</strong><span>C5 e C6 têm menor ganho pois ainda precisam agregar grandes volumes — Materialized Views resolvem isso</span></div>
+    </div>
+    <div class="list-item">
+      <div class="num" style="background:#3b82f6">→</div>
+      <div class="text"><strong>Tuning é um ciclo contínuo</strong><span>pg_stat_statements → EXPLAIN ANALYZE → otimização → medição. Repetir conforme o volume cresce.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 19 — FIM ═══ -->
+<div class="slide slide-title">
+  <div class="tag">Obrigado</div>
+  <h1>Dúvidas?</h1>
+  <p class="sub">Tuning de Consultas em PostgreSQL — E-commerce com Controle de Estoque</p>
+  <div class="meta">
+    <span>🐘 PostgreSQL 14+</span>
+    <span>📁 /sql — scripts disponíveis</span>
+    <span>📊 /graficos — gráficos interativos</span>
+  </div>
+</div>
+
+<!-- ═══ NAVEGAÇÃO ═══ -->
+<nav>
+  <button onclick="go(-1)">←</button>
+  <span id="counter">1 / 19</span>
+  <button onclick="go(1)">→</button>
+</nav>
+
+<script>
+// ── DADOS ──────────────────────────────────────────────────────────────────
+const LABELS = ["C1: Categoria/Estoque","C2: Vendas Período","C3: Estoque Mín.",
+                "C4: Histórico Movim.","C5: Ranking Produtos","C6: Clientes VIP"];
+const D = {
+  10000:   [[280,8],[540,45],[190,12],[620,6],[890,210],[1100,380]],
+  20000:   [[564,9],[1090,52],[384,14],[1248,7],[1791,245],[2210,420]],
+  30000:   [[847,10],[1638,61],[576,15],[1872,8],[2689,278],[3320,460]],
+  1000000: [[28400,18],[54800,120],[19200,28],[62000,12],[89400,980],[110500,1840]],
+};
+const VOLS = [10000,20000,30000,1000000];
+const VLBL = ["10k","20k","30k","1M"];
+const CORES = ["#e74c3c","#8e44ad","#2980b9","#e67e22","#16a085","#f39c12"];
+
+function fms(v){ return v>=1000?(v/1000).toFixed(1)+'s':v+'ms'; }
+
+// ── SLIDES ─────────────────────────────────────────────────────────────────
+const slides = document.querySelectorAll('.slide');
+const TOTAL = slides.length;
+let cur = 0;
+const charts = {}; // store instances
+
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = Math.max(0, Math.min(n, TOTAL - 1));
+  slides[cur].classList.add('active');
+  document.getElementById('counter').textContent = `${cur+1} / ${TOTAL}`;
+  document.getElementById('progress').style.width = `${(cur/(TOTAL-1))*100}%`;
+  // lazy init charts for the newly shown slide
+  const tag = slides[cur].dataset.chart;
+  if (tag && !charts[tag]) initChart(tag);
+}
+
+function go(d) { show(cur + d); }
+
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') go(1);
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')                go(-1);
+});
+
+// ── CHART INIT ─────────────────────────────────────────────────────────────
+function initChart(tag) {
+  if (tag === 'bar')  { initBar();  charts.bar  = true; }
+  if (tag === 'line') { initLine(); charts.line = true; }
+  if (tag === 'red')  { initRed();  charts.red  = true; }
+}
+
+// ── BAR CHART ──────────────────────────────────────────────────────────────
+let chartBar;
+function barData(vol) {
+  return {
+    labels: LABELS,
+    datasets: [
+      { label:'Sem Índice', data: D[vol].map(r=>r[0]),
+        backgroundColor:'rgba(239,68,68,0.8)', borderColor:'#b91c1c', borderWidth:1.5, borderRadius:5 },
+      { label:'Com Índice', data: D[vol].map(r=>r[1]),
+        backgroundColor:'rgba(34,197,94,0.8)',  borderColor:'#15803d', borderWidth:1.5, borderRadius:5 },
+    ]
+  };
+}
+function initBar() {
+  chartBar = new Chart(document.getElementById('cBar'), {
+    type:'bar', data: barData(1000000),
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'top', labels:{ color:'#94a3b8' } },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${fms(ctx.parsed.y)}` } }
+      },
+      scales:{
+        x:{ grid:{ color:'#1e293b' }, ticks:{ color:'#94a3b8', font:{size:11} } },
+        y:{ beginAtZero:true, grid:{ color:'#1e293b' }, ticks:{ color:'#94a3b8', callback: v=>fms(v) } }
+      }
+    }
+  });
+  // default highlight the 1M button
+  document.querySelector('#pills-bar .pill:last-child').classList.add('on');
+}
+function updBar(vol, btn) {
+  document.querySelectorAll('#pills-bar .pill').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  chartBar.data = barData(vol);
+  chartBar.update();
+}
+
+// ── LINE CHART ─────────────────────────────────────────────────────────────
+let chartLine;
+function lineDS(filter) {
+  const ds = [];
+  LABELS.forEach((nm, qi) => {
+    if (filter !== 'all' && filter !== 'c'+(qi+1)) return;
+    const col = CORES[qi];
+    ds.push({ label: nm+' — Sem', data: VOLS.map(v=>D[v][qi][0]),
+      borderColor:col, borderWidth:2.5, pointRadius:5, tension:0.35, fill:false });
+    ds.push({ label: nm+' — Com', data: VOLS.map(v=>D[v][qi][1]),
+      borderColor:col, borderWidth:2, borderDash:[6,4], pointRadius:4, tension:0.35, fill:false });
+  });
+  return ds;
+}
+function initLine() {
+  chartLine = new Chart(document.getElementById('cLine'), {
+    type:'line',
+    data:{ labels:VLBL, datasets:lineDS('all') },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:10}, boxWidth:16 } }
+      },
+      scales:{
+        x:{ title:{ display:true, text:'Volume de Pedidos', color:'#64748b' }, ticks:{ color:'#94a3b8' }, grid:{ color:'#1e293b' } },
+        y:{ type:'logarithmic', title:{ display:true, text:'Tempo (ms) — escala log', color:'#64748b' },
+            ticks:{ color:'#94a3b8', callback: v=>fms(v) }, grid:{ color:'#1e293b' } }
+      }
+    }
+  });
+}
+function updLine(f, btn) {
+  document.querySelectorAll('#pills-line .pill').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  chartLine.data.datasets = lineDS(f);
+  chartLine.update();
+}
+
+// ── RED CHART ──────────────────────────────────────────────────────────────
+let chartRed;
+function redData(vol) {
+  const reds = D[vol].map(([s,c]) => +((s-c)/s*100).toFixed(1));
+  return {
+    labels: LABELS,
+    datasets:[{ label:'Redução (%)', data:reds,
+      backgroundColor: reds.map(r => r>=95?'rgba(21,128,61,0.85)':r>=85?'rgba(34,197,94,0.8)':r>=70?'rgba(249,115,22,0.8)':'rgba(239,68,68,0.8)'),
+      borderColor:      reds.map(r => r>=95?'#14532d':r>=85?'#15803d':r>=70?'#c2410c':'#991b1b'),
+      borderWidth:1.5, borderRadius:5
+    }]
+  };
+}
+function initRed() {
+  chartRed = new Chart(document.getElementById('cRed'), {
+    type:'bar', data: redData(1000000),
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label: ctx => ` Redução: ${ctx.parsed.x}%` } }
+      },
+      scales:{
+        x:{ min:0, max:100, ticks:{ color:'#94a3b8', callback:v=>v+'%' }, grid:{ color:'#1e293b' } },
+        y:{ ticks:{ color:'#94a3b8', font:{size:11} } }
+      }
+    }
+  });
+  document.querySelector('#pills-red .pill:last-child').classList.add('on');
+}
+function updRed(vol, btn) {
+  document.querySelectorAll('#pills-red .pill').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  chartRed.data = redData(vol);
+  chartRed.update();
+}
+
+show(0);
+</script>
+</body>
+</html>

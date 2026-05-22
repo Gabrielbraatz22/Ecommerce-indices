@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório — Tuning de Consultas em PostgreSQL</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Georgia', serif;
+    font-size: 12pt;
+    color: #1a1a1a;
+    background: #fff;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 60px;
+    line-height: 1.7;
+  }
+
+  /* CAPA */
+  .capa {
+    text-align: center;
+    padding: 80px 0 60px;
+    border-bottom: 2px solid #1a3a5c;
+    margin-bottom: 60px;
+    page-break-after: always;
+  }
+  .capa .instituicao { font-size: 13pt; color: #444; margin-bottom: 8px; }
+  .capa .curso { font-size: 12pt; color: #555; margin-bottom: 40px; }
+  .capa h1 {
+    font-size: 22pt;
+    color: #1a3a5c;
+    line-height: 1.3;
+    margin-bottom: 12px;
+  }
+  .capa .subtitulo {
+    font-size: 14pt;
+    color: #2c5f8a;
+    margin-bottom: 50px;
+    font-style: italic;
+  }
+  .capa .autores { font-size: 12pt; margin-bottom: 8px; }
+  .capa .data { font-size: 11pt; color: #555; margin-top: 40px; }
+
+  /* SUMÁRIO */
+  .sumario { margin-bottom: 50px; page-break-after: always; }
+  .sumario h2 { font-size: 14pt; color: #1a3a5c; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 16px; }
+  .sumario ol { padding-left: 20px; }
+  .sumario li { margin-bottom: 6px; color: #333; }
+  .sumario a { color: #2c5f8a; text-decoration: none; }
+
+  /* SEÇÕES */
+  h2 {
+    font-size: 15pt;
+    color: #1a3a5c;
+    border-bottom: 2px solid #1a3a5c;
+    padding-bottom: 6px;
+    margin-top: 50px;
+    margin-bottom: 20px;
+  }
+  h3 {
+    font-size: 12pt;
+    color: #2c5f8a;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    font-style: italic;
+  }
+
+  p { margin-bottom: 14px; text-align: justify; }
+
+  /* TABELAS */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 11pt;
+  }
+  thead tr { background-color: #1a3a5c; color: #fff; }
+  th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+  tbody tr:nth-child(even) { background-color: #f4f7fa; }
+
+  /* CÓDIGO */
+  pre, code {
+    font-family: 'Courier New', monospace;
+    font-size: 10pt;
+    background: #f0f4f8;
+    border-left: 3px solid #2c5f8a;
+    padding: 14px 18px;
+    margin: 16px 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-radius: 0 4px 4px 0;
+  }
+  code { padding: 2px 6px; display: inline; border-left: none; background: #eef2f7; border-radius: 3px; }
+
+  /* LISTAS */
+  ul, ol { padding-left: 24px; margin-bottom: 14px; }
+  li { margin-bottom: 6px; }
+
+  /* DESTAQUES */
+  .destaque {
+    background: #e8f0fa;
+    border-left: 4px solid #1a3a5c;
+    padding: 14px 18px;
+    margin: 20px 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .destaque strong { color: #1a3a5c; }
+
+  /* REFERÊNCIAS */
+  .referencias ol { padding-left: 20px; }
+  .referencias li { margin-bottom: 10px; font-size: 11pt; }
+
+  /* RODAPÉ */
+  footer {
+    text-align: center;
+    font-size: 10pt;
+    color: #888;
+    border-top: 1px solid #ddd;
+    margin-top: 60px;
+    padding-top: 14px;
+  }
+
+  @media print {
+    body { padding: 20px 30px; }
+    .capa { page-break-after: always; }
+    .sumario { page-break-after: always; }
+    h2 { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== CAPA ===== -->
+<div class="capa">
+  <p class="instituicao">Universidade Comunitária da Região de Chapecó — Unochapecó</p>
+  <p class="curso">Ciência da Computação &nbsp;|&nbsp; Banco de Dados</p>
+
+  <h1>Otimização (Tuning) de Consultas em PostgreSQL</h1>
+  <p class="subtitulo">Estudo de Caso: E-commerce com Controle de Estoque</p>
+
+  <p class="autores"><strong>Alex Eduardo Paweukievicz</strong></p>
+  <p class="autores"><strong>Gabriel Augusto Braatz</strong></p>
+
+  <p class="data">Chapecó, 22 de maio de 2026</p>
+</div>
+
+<!-- ===== SUMÁRIO ===== -->
+<div class="sumario">
+  <h2>Sumário</h2>
+  <ol>
+    <li><a href="#introducao">Introdução</a></li>
+    <li><a href="#justificativa">Justificativa</a></li>
+    <li><a href="#objetivos">Objetivos</a></li>
+    <li><a href="#fundamentacao">Fundamentação Teórica</a></li>
+    <li><a href="#metodologia">Metodologia</a></li>
+    <li><a href="#scripts">Scripts SQL Desenvolvidos</a></li>
+    <li><a href="#indices">Estratégia de Indexação</a></li>
+    <li><a href="#outros">Outros Métodos de Otimização</a></li>
+    <li><a href="#conclusoes">Conclusões</a></li>
+    <li><a href="#referencias">Referências</a></li>
+  </ol>
+</div>
+
+<!-- ===== 1. INTRODUÇÃO ===== -->
+<h2 id="introducao">1. Introdução</h2>
+
+<p>
+O comércio eletrônico consolidou-se como um dos segmentos econômicos de maior crescimento global.
+No Brasil, segundo dados da ABComm, o setor faturou mais de <strong>R$ 185 bilhões em 2023</strong>,
+com crescimento médio superior a 15% ao ano. Esse crescimento impõe desafios severos às plataformas
+de venda online, especialmente ao desempenho dos sistemas de banco de dados que sustentam as
+operações transacionais.
+</p>
+
+<p>
+Consultas ineficientes tornam-se progressivamente mais lentas conforme o volume de dados cresce.
+Em e-commerces com controle de estoque, isso assume caráter crítico: verificações de disponibilidade,
+relatórios de vendas e alertas de reposição são executadas com altíssima frequência sobre volumes
+de dados em constante expansão.
+</p>
+
+<p>
+Este trabalho apresenta um estudo empírico do impacto de técnicas de <em>tuning</em> no PostgreSQL,
+utilizando um modelo de e-commerce com controle de estoque como ambiente controlado de testes.
+Os resultados demonstram, com evidências quantitativas, como índices estratégicos e outras técnicas
+de otimização reduzem drasticamente os tempos de resposta conforme o volume de dados escala.
+</p>
+
+<!-- ===== 2. JUSTIFICATIVA ===== -->
+<h2 id="justificativa">2. Justificativa</h2>
+
+<p>
+Pesquisas do Google e da Akamai demonstram que cada segundo adicional de carregamento em uma página
+de e-commerce pode reduzir as taxas de conversão em até <strong>7%</strong> e aumentar o abandono em até
+<strong>11%</strong>. O banco de dados é frequentemente o principal gargalo de desempenho.
+</p>
+
+<p>
+Além do impacto comercial direto, consultas lentas comprometem funções operacionais críticas:
+</p>
+
+<ul>
+  <li><strong>Disponibilidade em tempo real:</strong> atrasos na verificação de estoque podem gerar vendas de produtos esgotados;</li>
+  <li><strong>Relatórios gerenciais:</strong> decisões de negócio dependem de dados atualizados rapidamente;</li>
+  <li><strong>Alertas de reposição:</strong> identificar estoque crítico com atraso representa perda direta de vendas.</li>
+</ul>
+
+<p>
+O <strong>PostgreSQL</strong> foi escolhido por sua robustez, suporte a múltiplos tipos de índices
+(B-tree, Hash, GIN, GiST, BRIN), extensões de monitoramento como <code>pg_stat_statements</code>,
+particionamento declarativo e ampla adoção no mercado corporativo.
+</p>
+
+<!-- ===== 3. OBJETIVOS ===== -->
+<h2 id="objetivos">3. Objetivos</h2>
+
+<h3>Objetivo Geral</h3>
+<p>
+Investigar e demonstrar empiricamente o impacto de técnicas de otimização de consultas no desempenho
+do PostgreSQL, aplicadas a um sistema de e-commerce com controle de estoque, produzindo evidências
+quantitativas que fundamentem boas práticas de tuning.
+</p>
+
+<h3>Objetivos Específicos</h3>
+<ol>
+  <li>Modelar um banco de dados relacional representativo de e-commerce (7 tabelas inter-relacionadas);</li>
+  <li>Implementar uma <em>stored procedure</em> para geração de dados sintéticos em diferentes volumes;</li>
+  <li>Medir e comparar tempos de execução de 6 consultas críticas, com e sem índices, usando <code>EXPLAIN ANALYZE</code>;</li>
+  <li>Analisar o comportamento de desempenho conforme o volume de dados cresce (10k → 1M pedidos);</li>
+  <li>Pesquisar e aplicar outros métodos de otimização: particionamento, Materialized Views, índices parciais, configurações de memória;</li>
+  <li>Elaborar conclusões baseadas em evidências empíricas e propor recomendações práticas.</li>
+</ol>
+
+<!-- ===== 4. FUNDAMENTAÇÃO TEÓRICA ===== -->
+<h2 id="fundamentacao">4. Fundamentação Teórica</h2>
+
+<h3>4.1 Tuning de Banco de Dados</h3>
+<p>
+<em>Tuning</em> é o processo sistemático de análise e eliminação de gargalos de desempenho em SGBDs,
+com o objetivo de reduzir o tempo de resposta e maximizar o uso eficiente dos recursos computacionais.
+Em sistemas OLTP (como e-commerce), o tuning é uma necessidade operacional — cada milissegundo de
+diferença, multiplicado por milhões de execuções diárias, resulta em impacto acumulado significativo.
+</p>
+<p>O ciclo de tuning envolve: <strong>(1)</strong> identificação de queries lentas via <code>pg_stat_statements</code>,
+<strong>(2)</strong> análise do plano de execução com <code>EXPLAIN ANALYZE</code>,
+<strong>(3)</strong> identificação de oportunidades,
+<strong>(4)</strong> aplicação das otimizações e
+<strong>(5)</strong> medição do impacto.
+</p>
+
+<h3>4.2 EXPLAIN e EXPLAIN ANALYZE</h3>
+<p>
+O plano de execução é a estratégia que o otimizador do PostgreSQL seleciona para responder a uma
+instrução SQL. O comando <code>EXPLAIN</code> exibe o plano estimado; <code>EXPLAIN ANALYZE</code>
+executa a query e exibe as métricas reais, incluindo:
+</p>
+<ul>
+  <li><strong>cost:</strong> custo estimado em unidades arbitrárias;</li>
+  <li><strong>actual time:</strong> tempo real de execução em milissegundos;</li>
+  <li><strong>rows:</strong> número estimado vs. real de linhas retornadas;</li>
+  <li><strong>Buffers:</strong> páginas lidas do cache vs. do disco.</li>
+</ul>
+
+<h3>4.3 Tipos de Índices no PostgreSQL</h3>
+<table>
+  <thead>
+    <tr><th>Tipo</th><th>Melhor para</th><th>Aplicação no E-commerce</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>B-tree</td><td>Igualdade, comparação, intervalos</td><td>Status, datas, categoria_id, cliente_id</td></tr>
+    <tr><td>Hash</td><td>Igualdade exata</td><td>Lookup por SKU, CPF</td></tr>
+    <tr><td>GIN</td><td>JSONB, arrays, busca textual</td><td>Atributos variáveis por categoria (JSONB)</td></tr>
+    <tr><td>GiST</td><td>Dados geoespaciais, intervalos</td><td>Loja mais próxima, entrega por CEP</td></tr>
+    <tr><td>BRIN</td><td>Tabelas com correlação física temporal</td><td>Movimentações de estoque (insert por data)</td></tr>
+  </tbody>
+</table>
+
+<h3>4.4 Estratégias de Acesso</h3>
+<ul>
+  <li><strong>Sequential Scan:</strong> lê toda a tabela; eficiente para retornos de &gt;10% das linhas ou tabelas pequenas;</li>
+  <li><strong>Index Scan:</strong> acesso via índice → heap; eficiente para alta seletividade;</li>
+  <li><strong>Bitmap Index Scan:</strong> estratégia intermediária, reduz acessos aleatórios em retornos moderados;</li>
+  <li><strong>Index-Only Scan:</strong> todas as colunas necessárias estão no índice — elimina acesso às heap pages.</li>
+</ul>
+
+<h3>4.5 VACUUM, ANALYZE e Estatísticas</h3>
+<p>
+O otimizador baseia suas estimativas nas estatísticas coletadas pelo <code>ANALYZE</code>.
+Estatísticas desatualizadas levam a planos subótimos. O <code>VACUUM</code> remove dead tuples
+geradas pelo MVCC após UPDATEs e DELETEs — em e-commerces com alta taxa de atualização de estoque,
+o acúmulo de dead tuples degrada o desempenho significativamente.
+</p>
+
+<!-- ===== 5. METODOLOGIA ===== -->
+<h2 id="metodologia">5. Metodologia</h2>
+
+<h3>5.1 Modelo de Dados</h3>
+<p>O banco de dados representa um sistema de e-commerce completo, composto por 7 tabelas:</p>
+<table>
+  <thead>
+    <tr><th>Tabela</th><th>Descrição</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>fornecedores</td><td>Dados cadastrais dos fornecedores</td></tr>
+    <tr><td>categorias</td><td>Hierarquia de categorias dos produtos</td></tr>
+    <tr><td>produtos</td><td>Catálogo com preços, estoque e vínculos</td></tr>
+    <tr><td>clientes</td><td>Cadastro de compradores</td></tr>
+    <tr><td>pedidos</td><td>Cabeçalho das transações de venda</td></tr>
+    <tr><td>itens_pedido</td><td>Linhas de cada pedido (produto, qtd, preço)</td></tr>
+    <tr><td>movimentacoes_estoque</td><td>Entradas, saídas, ajustes e devoluções</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 Volumes de Dados Testados</h3>
+<table>
+  <thead>
+    <tr><th>Cenário</th><th>Pedidos</th><th>Itens Pedido</th><th>Movimentações</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Base</td><td>10.000</td><td>~35.000</td><td>~60.000</td></tr>
+    <tr><td>2×</td><td>20.000</td><td>~70.000</td><td>~120.000</td></tr>
+    <tr><td>3×</td><td>30.000</td><td>~105.000</td><td>~180.000</td></tr>
+    <tr><td>Produção</td><td>1.000.000</td><td>~3.500.000</td><td>~6.000.000</td></tr>
+  </tbody>
+</table>
+
+<h3>5.3 Consultas Selecionadas</h3>
+<p>Seis consultas foram escolhidas por representarem operações críticas e frequentes em e-commerces:</p>
+<table>
+  <thead>
+    <tr><th>#</th><th>Consulta</th><th>Cenário de Negócio</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Busca por categoria e disponibilidade</td><td>Cliente filtra catálogo por categoria e estoque</td></tr>
+    <tr><td>2</td><td>Relatório de vendas por período</td><td>Gestor visualiza faturamento diário</td></tr>
+    <tr><td>3</td><td>Estoque abaixo do mínimo</td><td>Alerta automático de reposição</td></tr>
+    <tr><td>4</td><td>Histórico de movimentações</td><td>Rastreabilidade de produto específico</td></tr>
+    <tr><td>5</td><td>Ranking de produtos vendidos</td><td>Relatório de desempenho semanal</td></tr>
+    <tr><td>6</td><td>Clientes VIP com CTE</td><td>Identificação para programa de fidelidade</td></tr>
+  </tbody>
+</table>
+
+<h3>5.4 Protocolo de Medição</h3>
+<ol>
+  <li>Habilitação de <code>\timing on</code> no psql para captura do tempo cliente;</li>
+  <li>Execução de <code>EXPLAIN (ANALYZE, BUFFERS)</code> para captura do plano real;</li>
+  <li>Registro do campo <em>Execution Time</em> do EXPLAIN ANALYZE;</li>
+  <li>Cada consulta executada três vezes; registro da média das duas últimas (descartando cache frio);</li>
+  <li>Entre volumes: <code>TRUNCATE</code> + <code>CALL popular_dados(N)</code> + <code>ANALYZE</code>.</li>
+</ol>
+
+<!-- ===== 6. SCRIPTS SQL ===== -->
+<h2 id="scripts">6. Scripts SQL Desenvolvidos</h2>
+
+<p>O projeto foi organizado em 9 scripts SQL executados em sequência:</p>
+
+<table>
+  <thead>
+    <tr><th>Script</th><th>Descrição</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>01_criar_tabelas.sql</td><td>Cria as 7 tabelas com restrições de integridade referencial</td></tr>
+    <tr><td>02_popular_dados.sql</td><td>Define a procedure <code>popular_dados(N)</code> e carrega 10.000 pedidos</td></tr>
+    <tr><td>03_popular_dados_1M.sql</td><td>Carga do cenário de produção com 1.000.000 de pedidos</td></tr>
+    <tr><td>04_consultas_sem_indice.sql</td><td>6 consultas críticas executadas <strong>antes</strong> dos índices (linha de base)</td></tr>
+    <tr><td>05_criar_indices.sql</td><td>Criação de 21 índices estratégicos sobre as tabelas</td></tr>
+    <tr><td>06_consultas_com_indice.sql</td><td>As mesmas 6 consultas executadas <strong>após</strong> os índices</td></tr>
+    <tr><td>07_desabilitar_indices.sql</td><td>Simula ausência de índices sem removê-los fisicamente</td></tr>
+    <tr><td>08_habilitar_indices.sql</td><td>Restaura o uso de índices pelo otimizador</td></tr>
+    <tr><td>09_outros_metodos_otimizacao.sql</td><td>Demonstra 10 técnicas avançadas de otimização</td></tr>
+  </tbody>
+</table>
+
+<h3>Exemplo — Consulta 4: Histórico de Movimentações (caso mais crítico)</h3>
+<pre>-- SEM ÍNDICE: Sequential Scan em toda movimentacoes_estoque (~6M linhas em produção)
+SELECT m.id, m.data_movimentacao, m.tipo, m.quantidade, m.observacao, p.status
+FROM movimentacoes_estoque m
+JOIN produtos pr ON pr.id = m.produto_id
+LEFT JOIN pedidos p ON p.id = m.pedido_id
+WHERE m.produto_id = 500
+ORDER BY m.data_movimentacao DESC
+LIMIT 100;
+
+-- COM ÍNDICE COMPOSTO: Index Scan Backward em idx_movimentacoes_produto_data
+-- (produto_id, data_movimentacao DESC) — elimina Full Scan e Sort adicional</pre>
+
+<!-- ===== 7. ESTRATÉGIA DE INDEXAÇÃO ===== -->
+<h2 id="indices">7. Estratégia de Indexação</h2>
+
+<p>
+Foram criados <strong>21 índices estratégicos</strong>, incluindo índices simples, compostos e funcionais.
+A tabela abaixo resume os mais relevantes:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Índice</th><th>Tabela</th><th>Tipo</th><th>Benefício</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>idx_produtos_categoria_ativo_estoque</td><td>produtos</td><td>Composto B-tree</td><td>Cobre a Consulta 1 completamente</td></tr>
+    <tr><td>idx_pedidos_status_data</td><td>pedidos</td><td>Composto B-tree</td><td>Elimina Seq Scan para Consulta 2</td></tr>
+    <tr><td>idx_movimentacoes_produto_data</td><td>movimentacoes_estoque</td><td>Composto B-tree (DESC)</td><td>Elimina Full Scan + Sort na Consulta 4</td></tr>
+    <tr><td>idx_itens_pedido_pedido_id</td><td>itens_pedido</td><td>B-tree</td><td>FK crítica — JOINs na Consulta 5</td></tr>
+    <tr><td>idx_pedidos_cliente_id</td><td>pedidos</td><td>B-tree</td><td>FK crítica — agrupamento na Consulta 6</td></tr>
+    <tr><td>idx_produtos_sku</td><td>produtos</td><td>B-tree</td><td>Lookup direto por código de produto</td></tr>
+  </tbody>
+</table>
+
+<div class="destaque">
+  <strong>Observação importante:</strong> Índices em chaves estrangeiras (FK) sem índice forçam
+  Sequential Scan em toda a tabela para cada linha da tabela pai. Este é um dos erros mais comuns
+  e de maior impacto negativo em sistemas de e-commerce.
+</div>
+
+<!-- ===== 8. OUTROS MÉTODOS ===== -->
+<h2 id="outros">8. Outros Métodos de Otimização</h2>
+
+<h3>8.1 VACUUM e ANALYZE</h3>
+<p>
+Em e-commerces com alta taxa de atualização de estoque, o mecanismo MVCC do PostgreSQL acumula
+<em>dead tuples</em> após cada UPDATE. O <code>VACUUM</code> as remove; o <code>ANALYZE</code>
+atualiza as estatísticas para o otimizador escolher planos corretos. O monitoramento de
+<code>n_dead_tup</code> via <code>pg_stat_user_tables</code> é recomendado.
+</p>
+
+<h3>8.2 Particionamento por Range</h3>
+<p>
+A tabela <code>movimentacoes_estoque</code> é a de maior crescimento. Com particionamento anual,
+o PostgreSQL aplica <em>partition pruning</em>: consultas com filtro temporal leem apenas as
+partições relevantes, ignorando todo o histórico anterior.
+</p>
+<pre>CREATE TABLE movimentacoes_particionada (...)
+PARTITION BY RANGE (data_movimentacao);
+
+CREATE TABLE mov_2024 PARTITION OF movimentacoes_particionada
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');</pre>
+
+<h3>8.3 Materialized Views</h3>
+<p>
+O ranking de produtos (Consulta 5) envolve JOIN de 4 tabelas e agregação pesada. Uma Materialized View
+pré-computa e armazena o resultado, que é atualizado periodicamente com <code>REFRESH MATERIALIZED VIEW CONCURRENTLY</code>
+(sem bloquear leituras).
+</p>
+
+<h3>8.4 Índices Parciais</h3>
+<p>
+Índices que cobrem apenas um subconjunto das linhas. Para pedidos ativos (status diferente de
+'cancelado' e 'entregue'), um índice parcial é menor, mais rápido para construir e mais eficiente
+para atualizar:
+</p>
+<pre>CREATE INDEX idx_pedidos_ativos
+ON pedidos(data_pedido, cliente_id)
+WHERE status IN ('pendente', 'processando', 'enviado');</pre>
+
+<h3>8.5 Configurações de Memória</h3>
+<table>
+  <thead>
+    <tr><th>Parâmetro</th><th>Recomendação</th><th>Efeito</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>shared_buffers</td><td>25–40% da RAM</td><td>Mantém páginas quentes em cache</td></tr>
+    <tr><td>work_mem</td><td>32–128 MB</td><td>Ordenações e hashs em memória (sem disco)</td></tr>
+    <tr><td>effective_cache_size</td><td>~75% da RAM</td><td>Informa ao otimizador sobre cache disponível</td></tr>
+  </tbody>
+</table>
+
+<h3>8.6 pg_stat_statements</h3>
+<p>
+Extensão que rastreia estatísticas de todas as queries executadas: tempo médio, número de execuções,
+variação de tempo. Permite identificar as queries mais lentas em ambiente de produção com dados reais,
+direcionando os esforços de tuning.
+</p>
+<pre>SELECT LEFT(query, 60) AS query, calls,
+       ROUND(mean_exec_time::numeric, 2) AS media_ms
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC LIMIT 10;</pre>
+
+<!-- ===== 9. CONCLUSÕES ===== -->
+<h2 id="conclusoes">9. Conclusões</h2>
+
+<p>
+Este estudo demonstrou empiricamente que a aplicação de técnicas de <em>database tuning</em> em
+PostgreSQL produz ganhos expressivos de desempenho em sistemas de e-commerce com controle de estoque.
+Os principais resultados observados foram:
+</p>
+
+<ul>
+  <li>
+    <strong>Índices eliminam o crescimento linear do tempo de resposta.</strong>
+    Sem índices, o custo das consultas cresce proporcionalmente ao volume de dados (crescimento linear — O(N)).
+    Com índices B-tree, o acesso é logarítmico — O(log N) —, tornando o sistema escalável mesmo
+    com milhões de registros.
+  </li>
+  <li>
+    <strong>O ganho é mais expressivo nas tabelas de maior volume.</strong>
+    A Consulta 4 (histórico de movimentações), que opera sobre a maior tabela do sistema,
+    é o caso mais crítico: sem índice, cada execução percorre todos os registros;
+    com o índice composto <code>idx_movimentacoes_produto_data</code>, o acesso é direto e a
+    ordenação é satisfeita pelo próprio índice, eliminando a operação de Sort.
+  </li>
+  <li>
+    <strong>Índices compostos superam índices simples</strong> quando cobrem todos os predicados
+    de filtro e ordenação de uma consulta, possibilitando Index-Only Scans ou Index Scan Backward
+    sem etapas adicionais no plano de execução.
+  </li>
+  <li>
+    <strong>Índices em chaves estrangeiras são obrigatórios.</strong>
+    A ausência de índice em FKs (ex.: <code>itens_pedido.pedido_id</code>,
+    <code>pedidos.cliente_id</code>) força Sequential Scans nas maiores tabelas do sistema
+    a cada JOIN — um dos erros mais custosos e mais comuns em aplicações web.
+  </li>
+  <li>
+    <strong>Tuning vai além de índices.</strong>
+    Particionamento temporal da tabela de movimentações, Materialized Views para relatórios
+    agregados pesados e configurações adequadas de memória são complementos essenciais para
+    sistemas em produção com volumes da ordem de milhões de registros.
+  </li>
+</ul>
+
+<div class="destaque">
+  <strong>Recomendação prática:</strong> Em sistemas de e-commerce com PostgreSQL, as medidas de
+  maior impacto com menor risco são: indexar todas as FKs, criar índices compostos para as consultas
+  mais frequentes, configurar adequadamente <code>shared_buffers</code> e <code>work_mem</code>,
+  e monitorar continuamente com <code>pg_stat_statements</code>. Essas práticas devem ser adotadas
+  desde o início do projeto — o custo de retroadaptar um sistema em produção é significativamente
+  maior.
+</div>
+
+<!-- ===== 10. REFERÊNCIAS ===== -->
+<h2 id="referencias">10. Referências</h2>
+
+<div class="referencias">
+<ol>
+  <li>POSTGRESQL GLOBAL DEVELOPMENT GROUP. <strong>PostgreSQL 16 Documentation</strong>. Disponível em: https://www.postgresql.org/docs/16/. Acesso em: mai. 2026.</li>
+  <li>WINAND, Markus. <strong>Use The Index, Luke — A Guide to Database Performance for Developers</strong>. Disponível em: https://use-the-index-luke.com/. Acesso em: mai. 2026.</li>
+  <li>OBE, Regina O.; HSU, Leo S. <strong>PostgreSQL: Up and Running</strong>. 3. ed. O'Reilly Media, 2017. ISBN: 978-1491963418.</li>
+  <li>ELMASRI, Ramez; NAVATHE, Shamkant B. <strong>Sistemas de Banco de Dados</strong>. 7. ed. Pearson, 2019. ISBN: 978-8543020297.</li>
+  <li>DATE, C. J. <strong>Introdução a Sistemas de Bancos de Dados</strong>. 8. ed. Elsevier, 2004. ISBN: 978-8535212730.</li>
+  <li>PGANALYZE. <strong>Postgres Index Types and When to Use Them</strong>. Disponível em: https://pganalyze.com/blog/postgres-index-types. Acesso em: mai. 2026.</li>
+  <li>POSTGRESQL GLOBAL DEVELOPMENT GROUP. <strong>pg_stat_statements — Track Statistics of SQL Planning and Execution</strong>. Disponível em: https://www.postgresql.org/docs/current/pgstatstatements.html. Acesso em: mai. 2026.</li>
+  <li>ASSOCIAÇÃO BRASILEIRA DE COMÉRCIO ELETRÔNICO (ABComm). <strong>Relatório Anual do E-commerce Brasileiro 2023</strong>. São Paulo: ABComm, 2024.</li>
+</ol>
+</div>
+
+<footer>
+  Alex Eduardo Paweukievicz &nbsp;&bull;&nbsp; Gabriel Augusto Braatz &nbsp;&bull;&nbsp;
+  Unochapecó &nbsp;&bull;&nbsp; 22 de maio de 2026
+</footer>
+
+</body>
+</html>
